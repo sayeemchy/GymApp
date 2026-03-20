@@ -310,7 +310,7 @@ struct ExerciseDayDetailView: View {
 
     @State private var exerciseDate = Date()
     @State private var exerciseSearchText = ""
-    @State private var visibleExercises: [ExerciseDayExercise] = []
+    @State private var visibleExercises: [String] = []
     @State private var exerciseInputs: [String: ExerciseLogInput] = [:]
     @State private var isDatePickerPresented = false
 
@@ -337,20 +337,26 @@ struct ExerciseDayDetailView: View {
         .map { $0 }
     }
 
-    private func reloadVisibleExercises() {
-        let currentDayType = dayType
-        let descriptor = FetchDescriptor<ExerciseDayExercise>(
-            predicate: #Predicate { exercise in
-                exercise.dayType == currentDayType
-            },
-            sortBy: [SortDescriptor(\.exerciseName)]
-        )
+    private var storedExerciseKey: String {
+        "exercise-day-\(dayType.lowercased())"
+    }
 
-        visibleExercises = (try? modelContext.fetch(descriptor)) ?? []
+    private func storedExerciseNames() -> [String] {
+        UserDefaults.standard.stringArray(forKey: storedExerciseKey) ?? []
+    }
+
+    private func saveStoredExerciseNames(_ exerciseNames: [String]) {
+        UserDefaults.standard.set(exerciseNames, forKey: storedExerciseKey)
+    }
+
+    private func reloadVisibleExercises() {
+        visibleExercises = storedExerciseNames().sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
     }
 
     private func syncInputsWithVisibleExercises() {
-        let visibleExerciseNames = Set(visibleExercises.map(\.exerciseName))
+        let visibleExerciseNames = Set(visibleExercises)
 
         for exerciseName in visibleExerciseNames {
             ensureInputExists(for: exerciseName)
@@ -396,10 +402,10 @@ struct ExerciseDayDetailView: View {
     }
 
     private var canSaveExercises: Bool {
-        !visibleExercises.isEmpty && visibleExercises.allSatisfy { exercise in
-            let input = exerciseInputs[exercise.exerciseName] ?? ExerciseLogInput()
+        !visibleExercises.isEmpty && visibleExercises.allSatisfy { exerciseName in
+            let input = exerciseInputs[exerciseName] ?? ExerciseLogInput()
 
-            if isCardioExercise(exercise.exerciseName) {
+            if isCardioExercise(exerciseName) {
                 return isValidNumber(input.duration)
             }
 
@@ -408,13 +414,13 @@ struct ExerciseDayDetailView: View {
     }
 
     private func saveLoggedExercises() {
-        for exercise in visibleExercises {
-            let input = exerciseInputs[exercise.exerciseName] ?? ExerciseLogInput()
+        for exerciseName in visibleExercises {
+            let input = exerciseInputs[exerciseName] ?? ExerciseLogInput()
             let entry = ExerciseEntry(
-                exerciseName: exercise.exerciseName,
-                reps: isCardioExercise(exercise.exerciseName) ? "" : input.reps.trimmingCharacters(in: .whitespacesAndNewlines),
-                weight: isCardioExercise(exercise.exerciseName) ? "" : input.weight.trimmingCharacters(in: .whitespacesAndNewlines),
-                duration: isCardioExercise(exercise.exerciseName) ? input.duration.trimmingCharacters(in: .whitespacesAndNewlines) : "",
+                exerciseName: exerciseName,
+                reps: isCardioExercise(exerciseName) ? "" : input.reps.trimmingCharacters(in: .whitespacesAndNewlines),
+                weight: isCardioExercise(exerciseName) ? "" : input.weight.trimmingCharacters(in: .whitespacesAndNewlines),
+                duration: isCardioExercise(exerciseName) ? input.duration.trimmingCharacters(in: .whitespacesAndNewlines) : "",
                 exerciseDate: exerciseDate
             )
             modelContext.insert(entry)
@@ -425,26 +431,24 @@ struct ExerciseDayDetailView: View {
     }
 
     private func addExercise(_ exerciseName: String) {
-        guard !visibleExercises.contains(where: { $0.exerciseName.localizedCaseInsensitiveCompare(exerciseName) == .orderedSame }) else {
+        guard !visibleExercises.contains(where: { $0.localizedCaseInsensitiveCompare(exerciseName) == .orderedSame }) else {
             exerciseSearchText = ""
             dismissKeyboard()
             return
         }
 
-        let exercise = ExerciseDayExercise(dayType: dayType, exerciseName: exerciseName)
-        modelContext.insert(exercise)
-        try? modelContext.save()
-        reloadVisibleExercises()
+        visibleExercises.append(exerciseName)
+        visibleExercises.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
         syncInputsWithVisibleExercises()
+        saveStoredExerciseNames(visibleExercises)
         exerciseSearchText = ""
         dismissKeyboard()
     }
 
-    private func deleteExercise(_ exercise: ExerciseDayExercise) {
-        modelContext.delete(exercise)
-        try? modelContext.save()
-        reloadVisibleExercises()
+    private func deleteExercise(named exerciseName: String) {
+        visibleExercises.removeAll { $0.localizedCaseInsensitiveCompare(exerciseName) == .orderedSame }
         syncInputsWithVisibleExercises()
+        saveStoredExerciseNames(visibleExercises)
     }
 
     var body: some View {
@@ -494,35 +498,35 @@ struct ExerciseDayDetailView: View {
                 if !visibleExercises.isEmpty {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            ForEach(visibleExercises) { exercise in
+                            ForEach(visibleExercises, id: \.self) { exerciseName in
                                 VStack(alignment: .leading, spacing: 8) {
                                     Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
                                         GridRow {
-                                            Text(exercise.exerciseName)
+                                            Text(exerciseName)
                                                 .font(.headline)
 
-                                            if isCardioExercise(exercise.exerciseName) {
-                                                TextField("Duration", text: binding(for: exercise.exerciseName, keyPath: \.duration))
+                                            if isCardioExercise(exerciseName) {
+                                                TextField("Duration", text: binding(for: exerciseName, keyPath: \.duration))
                                                     .textFieldStyle(.roundedBorder)
                                             } else {
                                                 HStack(spacing: 12) {
-                                                    TextField("Reps", text: binding(for: exercise.exerciseName, keyPath: \.reps))
+                                                    TextField("Reps", text: binding(for: exerciseName, keyPath: \.reps))
                                                         .textFieldStyle(.roundedBorder)
 
-                                                    TextField("Weight", text: binding(for: exercise.exerciseName, keyPath: \.weight))
+                                                    TextField("Weight", text: binding(for: exerciseName, keyPath: \.weight))
                                                         .textFieldStyle(.roundedBorder)
                                                 }
                                             }
                                         }
                                     }
 
-                                    if isCardioExercise(exercise.exerciseName) {
-                                        if showsNumberError(for: exerciseInputs[exercise.exerciseName]?.duration ?? "") {
+                                    if isCardioExercise(exerciseName) {
+                                        if showsNumberError(for: exerciseInputs[exerciseName]?.duration ?? "") {
                                             Text("Only number allowed")
                                                 .font(.caption)
                                                 .foregroundStyle(.red)
                                         }
-                                    } else if showsNumberError(for: exerciseInputs[exercise.exerciseName]?.reps ?? "") || showsNumberError(for: exerciseInputs[exercise.exerciseName]?.weight ?? "") {
+                                    } else if showsNumberError(for: exerciseInputs[exerciseName]?.reps ?? "") || showsNumberError(for: exerciseInputs[exerciseName]?.weight ?? "") {
                                         Text("Only number allowed")
                                             .font(.caption)
                                             .foregroundStyle(.red)
@@ -532,7 +536,7 @@ struct ExerciseDayDetailView: View {
                                         Spacer()
 
                                         Button("Delete", role: .destructive) {
-                                            deleteExercise(exercise)
+                                            deleteExercise(named: exerciseName)
                                         }
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
