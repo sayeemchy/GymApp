@@ -473,7 +473,11 @@ struct ExerciseDayDetailView: View {
                 .buttonStyle(.plain)
 
                 TextField("Seach exercise type", text: $exerciseSearchText)
-                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(.black)
+                    .tint(.black)
 
                 if !matchingExerciseTypes.isEmpty {
                     ScrollView {
@@ -487,6 +491,7 @@ struct ExerciseDayDetailView: View {
                                         .padding(.vertical, 8)
                                         .padding(.horizontal, 12)
                                         .background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .foregroundStyle(.black)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -701,7 +706,11 @@ struct CreateExerciseView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Seach exercise type", text: $exerciseSearchText)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .foregroundStyle(.black)
+                        .tint(.black)
 
                     if !matchingExerciseTypes.isEmpty {
                         ScrollView {
@@ -715,6 +724,7 @@ struct CreateExerciseView: View {
                                             .padding(.vertical, 8)
                                             .padding(.horizontal, 12)
                                             .background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                            .foregroundStyle(.black)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1197,7 +1207,11 @@ struct ProgressGraphView: View {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Seach exercise type", text: $exerciseSearchText)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .foregroundStyle(.black)
+                        .tint(.black)
 
                     if !matchingExerciseTypes.isEmpty {
                         ScrollView {
@@ -1211,6 +1225,7 @@ struct ProgressGraphView: View {
                                             .padding(.vertical, 8)
                                             .padding(.horizontal, 12)
                                             .background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                            .foregroundStyle(.black)
                                     }
                                     .buttonStyle(.plain)
                                 }
