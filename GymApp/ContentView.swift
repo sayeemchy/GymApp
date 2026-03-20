@@ -164,9 +164,26 @@ final class ExerciseType {
     }
 }
 
+@Model
+final class ExerciseDayExercise {
+    var dayType: String
+    var exerciseName: String
+
+    init(dayType: String, exerciseName: String) {
+        self.dayType = dayType
+        self.exerciseName = exerciseName
+    }
+}
+
 private struct DraftExerciseEntry: Identifiable {
     let id = UUID()
     let exerciseName: String
+    var reps = ""
+    var weight = ""
+    var duration = ""
+}
+
+private struct ExerciseLogInput {
     var reps = ""
     var weight = ""
     var duration = ""
@@ -221,6 +238,7 @@ struct WorkoutOptionsView: View {
             VStack(spacing: 20) {
                 optionButton("Let's exercise", destination: CreateExerciseView())
                 optionButton("Customise new exercise type", destination: CreateExerciseTypeView())
+                optionButton("Set Exercise Day", destination: SetExerciseDayView())
                 optionButton("Past Exercise Data", destination: PastExerciseDataView())
                 optionButton("Progress Graph", destination: ProgressGraphView())
             }
@@ -240,6 +258,339 @@ struct WorkoutOptionsView: View {
                 .foregroundStyle(.black)
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct SetExerciseDayView: View {
+    private let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
+
+    var body: some View {
+        ZStack {
+            appBackgroundColor
+                .ignoresSafeArea()
+
+            LazyVGrid(columns: columns, spacing: 16) {
+                exerciseDayButton(title: "Push", systemImage: "figure.strengthtraining.traditional")
+                exerciseDayButton(title: "Pull", systemImage: "figure.rower")
+                exerciseDayButton(title: "Leg", systemImage: "figure.walk")
+            }
+            .padding()
+        }
+        .navigationTitle("Set Exercise Day")
+    }
+
+    private func exerciseDayButton(title: String, systemImage: String) -> some View {
+        NavigationLink {
+            ExerciseDayDetailView(dayType: title)
+        } label: {
+            VStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 34))
+
+                Text(title)
+                    .font(.headline)
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 150)
+            .background(workoutOptionButtonColor, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ExerciseDayDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ExerciseType.name) private var exerciseTypes: [ExerciseType]
+
+    let dayType: String
+
+    @State private var exerciseDate = Date()
+    @State private var exerciseSearchText = ""
+    @State private var visibleExercises: [ExerciseDayExercise] = []
+    @State private var exerciseInputs: [String: ExerciseLogInput] = [:]
+    @State private var isDatePickerPresented = false
+
+    private var searchableExerciseTypes: [String] {
+        let customTypes = exerciseTypes.map(\.name)
+        var seen = Set<String>()
+
+        return (customTypes + topExerciseTypes).filter { exerciseName in
+            let normalizedName = exerciseName.lowercased()
+            return seen.insert(normalizedName).inserted
+        }
+    }
+
+    private var matchingExerciseTypes: [String] {
+        let trimmedQuery = exerciseSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return []
+        }
+
+        return searchableExerciseTypes.filter { exerciseName in
+            exerciseName.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+        .prefix(100)
+        .map { $0 }
+    }
+
+    private func reloadVisibleExercises() {
+        let currentDayType = dayType
+        let descriptor = FetchDescriptor<ExerciseDayExercise>(
+            predicate: #Predicate { exercise in
+                exercise.dayType == currentDayType
+            },
+            sortBy: [SortDescriptor(\.exerciseName)]
+        )
+
+        visibleExercises = (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    private func syncInputsWithVisibleExercises() {
+        let visibleExerciseNames = Set(visibleExercises.map(\.exerciseName))
+
+        for exerciseName in visibleExerciseNames {
+            ensureInputExists(for: exerciseName)
+        }
+
+        exerciseInputs = exerciseInputs.filter { visibleExerciseNames.contains($0.key) }
+    }
+
+    private func isCardioExercise(_ exerciseName: String) -> Bool {
+        cardioExerciseTypes.contains(exerciseName)
+    }
+
+    private func isValidNumber(_ value: String) -> Bool {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedValue.isEmpty else {
+            return false
+        }
+
+        return Double(trimmedValue) != nil
+    }
+
+    private func showsNumberError(for value: String) -> Bool {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmedValue.isEmpty && !isValidNumber(trimmedValue)
+    }
+
+    private func ensureInputExists(for exerciseName: String) {
+        if exerciseInputs[exerciseName] == nil {
+            exerciseInputs[exerciseName] = ExerciseLogInput()
+        }
+    }
+
+    private func binding(for exerciseName: String, keyPath: WritableKeyPath<ExerciseLogInput, String>) -> Binding<String> {
+        Binding(
+            get: {
+                exerciseInputs[exerciseName]?[keyPath: keyPath] ?? ""
+            },
+            set: { newValue in
+                ensureInputExists(for: exerciseName)
+                exerciseInputs[exerciseName]?[keyPath: keyPath] = newValue
+            }
+        )
+    }
+
+    private var canSaveExercises: Bool {
+        !visibleExercises.isEmpty && visibleExercises.allSatisfy { exercise in
+            let input = exerciseInputs[exercise.exerciseName] ?? ExerciseLogInput()
+
+            if isCardioExercise(exercise.exerciseName) {
+                return isValidNumber(input.duration)
+            }
+
+            return isValidNumber(input.reps) && isValidNumber(input.weight)
+        }
+    }
+
+    private func saveLoggedExercises() {
+        for exercise in visibleExercises {
+            let input = exerciseInputs[exercise.exerciseName] ?? ExerciseLogInput()
+            let entry = ExerciseEntry(
+                exerciseName: exercise.exerciseName,
+                reps: isCardioExercise(exercise.exerciseName) ? "" : input.reps.trimmingCharacters(in: .whitespacesAndNewlines),
+                weight: isCardioExercise(exercise.exerciseName) ? "" : input.weight.trimmingCharacters(in: .whitespacesAndNewlines),
+                duration: isCardioExercise(exercise.exerciseName) ? input.duration.trimmingCharacters(in: .whitespacesAndNewlines) : "",
+                exerciseDate: exerciseDate
+            )
+            modelContext.insert(entry)
+        }
+
+        try? modelContext.save()
+        exerciseInputs.removeAll()
+    }
+
+    private func addExercise(_ exerciseName: String) {
+        guard !visibleExercises.contains(where: { $0.exerciseName.localizedCaseInsensitiveCompare(exerciseName) == .orderedSame }) else {
+            exerciseSearchText = ""
+            dismissKeyboard()
+            return
+        }
+
+        let exercise = ExerciseDayExercise(dayType: dayType, exerciseName: exerciseName)
+        modelContext.insert(exercise)
+        try? modelContext.save()
+        reloadVisibleExercises()
+        syncInputsWithVisibleExercises()
+        exerciseSearchText = ""
+        dismissKeyboard()
+    }
+
+    private func deleteExercise(_ exercise: ExerciseDayExercise) {
+        modelContext.delete(exercise)
+        try? modelContext.save()
+        reloadVisibleExercises()
+        syncInputsWithVisibleExercises()
+    }
+
+    var body: some View {
+        ZStack {
+            appBackgroundColor
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 24) {
+                Button {
+                    isDatePickerPresented = true
+                } label: {
+                    HStack {
+                        Text("Date")
+                        Spacer()
+                        Text(historyDateFormatter.string(from: exerciseDate))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+
+                TextField("Seach exercise type", text: $exerciseSearchText)
+                    .textFieldStyle(.roundedBorder)
+
+                if !matchingExerciseTypes.isEmpty {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(matchingExerciseTypes, id: \.self) { exerciseName in
+                                Button {
+                                    addExercise(exerciseName)
+                                } label: {
+                                    Text(exerciseName)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 12)
+                                        .background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 220)
+                }
+
+                if !visibleExercises.isEmpty {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(visibleExercises) { exercise in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
+                                        GridRow {
+                                            Text(exercise.exerciseName)
+                                                .font(.headline)
+
+                                            if isCardioExercise(exercise.exerciseName) {
+                                                TextField("Duration", text: binding(for: exercise.exerciseName, keyPath: \.duration))
+                                                    .textFieldStyle(.roundedBorder)
+                                            } else {
+                                                HStack(spacing: 12) {
+                                                    TextField("Reps", text: binding(for: exercise.exerciseName, keyPath: \.reps))
+                                                        .textFieldStyle(.roundedBorder)
+
+                                                    TextField("Weight", text: binding(for: exercise.exerciseName, keyPath: \.weight))
+                                                        .textFieldStyle(.roundedBorder)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if isCardioExercise(exercise.exerciseName) {
+                                        if showsNumberError(for: exerciseInputs[exercise.exerciseName]?.duration ?? "") {
+                                            Text("Only number allowed")
+                                                .font(.caption)
+                                                .foregroundStyle(.red)
+                                        }
+                                    } else if showsNumberError(for: exerciseInputs[exercise.exerciseName]?.reps ?? "") || showsNumberError(for: exerciseInputs[exercise.exerciseName]?.weight ?? "") {
+                                        Text("Only number allowed")
+                                            .font(.caption)
+                                            .foregroundStyle(.red)
+                                    }
+
+                                    HStack {
+                                        Spacer()
+
+                                        Button("Delete", role: .destructive) {
+                                            deleteExercise(exercise)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        .tint(.red)
+                                    }
+                                }
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    saveLoggedExercises()
+                } label: {
+                    Text("Save")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!canSaveExercises)
+            }
+            .padding()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                dismissKeyboard()
+            }
+        }
+        .navigationTitle(dayType)
+        .onAppear {
+            reloadVisibleExercises()
+            syncInputsWithVisibleExercises()
+        }
+        .sheet(isPresented: $isDatePickerPresented) {
+            NavigationStack {
+                VStack(alignment: .center, spacing: 0) {
+                    DatePicker("Date", selection: $exerciseDate, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .scaleEffect(0.88)
+                        .frame(maxHeight: 320, alignment: .top)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+
+                    Spacer()
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .navigationTitle("Select Date")
+            }
+            .presentationDetents([.fraction(0.56)])
+            .onChange(of: exerciseDate) {
+                isDatePickerPresented = false
+            }
+        }
     }
 }
 

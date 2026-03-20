@@ -15,6 +15,6 @@ struct GymAppApp: App {
             ContentView()
                 .preferredColorScheme(.light)
         }
-        .modelContainer(for: [ExerciseEntry.self, ExerciseType.self])
+        .modelContainer(for: [ExerciseEntry.self, ExerciseType.self, ExerciseDayExercise.self])
     }
 }
