@@ -876,6 +876,7 @@ struct ProgressGraphView: View {
                             x: .value("Month", item.monthName),
                             y: .value("Weight", item.weight)
                         )
+                        .interpolationMethod(.catmullRom)
                         .lineStyle(StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                         .foregroundStyle(.orange)
 
@@ -889,12 +890,20 @@ struct ProgressGraphView: View {
                     .frame(height: 360)
                     .chartPlotStyle { plotArea in
                         plotArea
+                            .background(alignment: .leading) {
+                                Rectangle()
+                                    .fill(.black)
+                                    .frame(width: 2)
+                            }
+                            .background(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(.black)
+                                    .frame(height: 2)
+                            }
                             .padding(.bottom, 2)
                     }
                     .chartXAxis {
                         AxisMarks(values: graphData.map(\.monthName)) { value in
-                            AxisGridLine()
-                            AxisTick()
                             AxisValueLabel {
                                 if let monthName = value.as(String.self) {
                                     Text(monthName)
@@ -908,12 +917,16 @@ struct ProgressGraphView: View {
                     }
                     .chartYAxis {
                         AxisMarks(position: .leading) {
-                            AxisGridLine()
                             AxisTick()
                             AxisValueLabel()
                         }
                     }
-                    .chartXAxisLabel("Month", position: .bottom, alignment: .leading, spacing: 2)
+                    .chartXAxisLabel(position: .bottom, alignment: .leading, spacing: 0) {
+                        Text("Month")
+                            .font(.caption)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offset(x: -8, y: 0)
+                    }
                     .chartYAxisLabel("Weight")
                 }
 
